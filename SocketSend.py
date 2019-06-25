@@ -1,26 +1,77 @@
 import socket
-import json
-import pickle
+from Categorization import Categorization
+import pyfpgrowth
+
 
 host = "127.0.0.1"
-port = 7000
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind((host,port))
-s.listen(1)
-conn,addr = s.accept()
+fpDataPort = 7000
+streamDataPort = 7001
+transactions = []
+subtransaction=[]
+count=0
+fpDataFile = open("gunlukVeri.txt", "r")
+streamDataFile = open("gunlukVeri.txt", "r")
+cat = Categorization()
 
-file = open("gün.txt", "r")
-#file2 = open("veriler.json","r")
-#jsonObj = json.load(file2)
-
-# Repeat for each song in the text file
-for line in file:
-    # Let's split the line into an array called "fields" using the ";" as a separator:
-    fields = line.split("\t")
-    records = fields[1][1:len(fields[1])-1]
-    record = records.split(":")
-    print(record[1]+record[2])
+    #Socket for sending FP pattern
+fpDataSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+fpDataSocket.bind((host, fpDataPort))
+fpDataSocket.listen(1)
+fpConn, addr = fpDataSocket.accept()
 
 
-file.close()
-conn.close()
+    # FP-Data Categorization
+for line in fpDataFile:
+
+    fields = line.split("\"")
+    field = fields[1].split(",")
+    record = field[0].split(":")
+
+    # 3-Grouping and categorization
+    if count < 3:
+        if cat.categorize(record[1], record[3]) not in subtransaction:
+            subtransaction.append(cat.categorize(record[1], record[3]))
+        count += 1
+    else:
+        if cat.categorize(record[1], record[3]) not in subtransaction:
+            subtransaction.append(cat.categorize(record[1], record[3]))
+        transactions.append(subtransaction)
+        count = 0
+        subtransaction = []
+
+
+    # creating fp-growth and frequency patterns
+patterns = pyfpgrowth.find_frequent_patterns(transactions, 20)
+
+    # Sending FP Patterns
+for keys in patterns:
+    if len(keys)>=2:
+        x=str(keys)+";"
+        print(x)
+        fpConn.send(x.encode('utf-8'))
+
+
+#Closing fpPattern files and connections
+fpDataFile.close()
+fpConn.close()
+
+#Socket for sending stream data
+streamDataSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+streamDataSocket.bind((host, streamDataPort))
+streamDataSocket.listen(1)
+streamConn, addr2 = streamDataSocket.accept()
+
+    # Sending real stream data
+for line in streamDataFile:
+
+    fields = line.split("\"")
+    field = fields[1].split(",")
+    record = field[0].split(":")
+    print(cat.categorize(record[1], record[3]))
+    streamConn.send(cat.categorize(record[1], record[3]).encode('utf-8'))
+
+
+# Closing stream files and connections
+streamDataFile.close()
+streamConn.close()
+
